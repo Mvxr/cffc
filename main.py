@@ -74,4 +74,4 @@ async def on_message(message):
 
 
 # Uruchomienie bota
-client.run('MTA3MjE1MzE2MzU1NTE0MzY4MA.Gt75ok.zPCPEJJNWZ44Yaxh0tx9pE55n6S3cfRxVzGNEI')
+client.run('')
