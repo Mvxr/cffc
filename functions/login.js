@@ -1,39 +1,31 @@
 const mongoose = require("mongoose");
-const bcrypt = require("bcrypt");
 
-const uri = process.env.MONGO_URI; // <- pamiętaj, żeby mieć na końcu /cffc
 let conn = null;
 
-const connectDB = async () => {
-  if (!conn) {
-    conn = await mongoose.connect(uri, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true
-    });
-    console.log("✅ Połączono z MongoDB");
-  }
-};
-
-// Schemat użytkownika (wymuszenie kolekcji users)
 const userSchema = new mongoose.Schema(
   {
     username: String,
-    password: String,
-    role: String
+    password: String, // plain-text na początek
+    role: String,
+    flag: String,
   },
   { collection: "users" }
 );
 
-const User = mongoose.model("User", userSchema);
+let User;
 
 exports.handler = async (event) => {
   try {
-    await connectDB();
-
     const { username, password } = JSON.parse(event.body);
 
-    if (!username || !password) {
-      return { statusCode: 400, body: "⚠️ Brak loginu lub hasła" };
+    if (!conn) {
+      conn = await mongoose.connect(process.env.MONGO_URI, {
+        useNewUrlParser: true,
+        useUnifiedTopology: true,
+        dbName: "VibeWebShop", // 👈 ważne!
+      });
+      User = mongoose.model("User", userSchema);
+      console.log("✅ Połączono z MongoDB");
     }
 
     console.log("🔍 Szukam użytkownika:", username);
@@ -42,28 +34,33 @@ exports.handler = async (event) => {
     console.log("📦 Znaleziony użytkownik:", user);
 
     if (!user) {
-      return { statusCode: 401, body: "❌ Niepoprawny login lub hasło" };
+      return {
+        statusCode: 401,
+        body: JSON.stringify({ message: "Nie ma takiego użytkownika" }),
+      };
     }
 
-    // porównanie hasła
-    const match = await bcrypt.compare(password, user.password);
-    console.log("🔑 Czy hasło pasuje?", match);
-
-    if (!match) {
-      return { statusCode: 401, body: "❌ Niepoprawny login lub hasło" };
+    // plain text check
+    if (password !== user.password) {
+      return {
+        statusCode: 401,
+        body: JSON.stringify({ message: "Błędne hasło" }),
+      };
     }
 
-    // sukces
     return {
       statusCode: 200,
       body: JSON.stringify({
-        username: user.username,
-        role: user.role
-      })
+        message: "Zalogowano pomyślnie",
+        role: user.role,
+        flag: user.flag,
+      }),
     };
-
   } catch (err) {
-    console.error("💥 Błąd w login.js:", err);
-    return { statusCode: 500, body: "Błąd serwera" };
+    console.error("❌ Błąd logowania:", err);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ message: "Błąd serwera" }),
+    };
   }
 };
