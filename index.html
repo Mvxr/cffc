@@ -204,23 +204,36 @@ async function fetchProducts() {
     });
   }
 
-  function renderOrders() {
-    const list = document.getElementById("order-list");
-    list.innerHTML = "";
-    if (orders.length === 0) { list.innerHTML = "<li>Brak zamówień</li>"; return; }
-    orders.forEach(o => {
-      const li = document.createElement("li");
-      li.textContent = `👤 ${o.user} zamówił(a) ${o.product} - ${o.date}`;
-      list.appendChild(li);
-    });
+function renderOrders() {
+  const list = document.getElementById("order-list");
+  list.innerHTML = "";
+
+  if (orders.length === 0) {
+    list.innerHTML = "<li>Brak zamówień</li>";
+    return;
   }
 
-  // === INIT ===
-  askForPassword().then(() => {
-    fetchProducts();
-    fetchOrders();
+  // Agregujemy zamówienia po user + produkt
+  const agg = {}; // { "MARK|Baterie": { user, product, count } }
+
+  orders.forEach(o => {
+    const key = `${o.user}|${o.product}`;
+    if (agg[key]) {
+      agg[key].count += 1;
+    } else {
+      agg[key] = { user: o.user, product: o.product, count: 1 };
+    }
   });
+
+  // Renderujemy po agregacji
+  Object.values(agg).forEach(o => {
+    const li = document.createElement("li");
+    li.textContent = `👤 ${o.user} zamówił(a) ${o.product} x${o.count}`;
+    list.appendChild(li);
+  });
+}
 </script>
 
 </body>
 </html>
+
