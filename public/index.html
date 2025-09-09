@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <title>DeepWeb Sklep – Netlify + MongoDB</title>
 <style>
-/* === STYLING === */
 body { margin:0; font-family:'Courier New', monospace; background:black; color:#00cc66; overflow-x:hidden; }
 canvas#matrix { position:fixed; top:0; left:0; z-index:-1; width:100%; height:100%; }
 h1 { text-align:center; margin:20px 0; font-size:36px; text-shadow:0 0 10px #009933; }
@@ -24,7 +23,19 @@ h1 { text-align:center; margin:20px 0; font-size:36px; text-shadow:0 0 10px #009
 .tab-btn { background:#111; color:#00cc66; border:1px solid #00cc66; padding:8px 15px; margin:0 5px; border-radius:5px; cursor:pointer; }
 .tab-btn:hover { background:#00cc66; color:black; }
 .tab-content { display:block; }
-#login-box { max-width:400px; margin:100px auto; text-align:center; }
+#login-box {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  max-width:400px;
+  text-align:center;
+  background: rgba(0,0,0,0.7);
+  padding: 30px;
+  border: 1px solid #00cc66;
+  border-radius: 10px;
+  box-shadow: 0 0 15px rgba(0,204,102,0.5);
+}
 #login-box input { width:80%; margin:5px 0; padding:8px; border-radius:5px; border:1px solid #00cc66; background:black; color:#00cc66; }
 #login-box button { margin-top:10px; }
 </style>
@@ -32,6 +43,7 @@ h1 { text-align:center; margin:20px 0; font-size:36px; text-shadow:0 0 10px #009
 <body>
 <canvas id="matrix"></canvas>
 
+<!-- LOGOWANIE -->
 <div id="login-box">
   <h1>💀 Logowanie 💀</h1>
   <input type="text" id="login-username" placeholder="Login..." />
@@ -40,6 +52,7 @@ h1 { text-align:center; margin:20px 0; font-size:36px; text-shadow:0 0 10px #009
   <button class="btn" onclick="login()">Zaloguj</button>
 </div>
 
+<!-- GŁÓWNA CZĘŚĆ -->
 <div id="main-container" class="container" style="display:none;">
   <h1>💀 DeepWeb Sklep – 3 Karty 💀</h1>
   <div class="top-bar">
@@ -83,7 +96,6 @@ async function login(){
 
   const res=await fetch("/.netlify/functions/login",{
     method:"POST",
-    headers:{"Content-Type":"application/json"},
     body:JSON.stringify({username,password})
   });
   if(res.status!==200){ alert(await res.text()); return; }
@@ -91,15 +103,15 @@ async function login(){
   document.getElementById("login-box").style.display="none";
   document.getElementById("main-container").style.display="block";
   document.getElementById("welcome-text").textContent=`Witaj, ${currentUser.username} (${currentUser.role})`;
-  if(currentUser.role==="Admin") document.getElementById("btn-reset-orders").style.display="inline-block";
+  if(currentUser.role==="admin") document.getElementById("btn-reset-orders").style.display="inline-block";
   await initData();
 }
 
 // === INIT DATA ===
 async function initData(){ 
-  await fetchProducts("products1","tab1"); 
-  await fetchProducts("products2","tab2"); 
-  await fetchProducts("products3","tab3"); 
+  await fetchProducts(1); 
+  await fetchProducts(2); 
+  await fetchProducts(3); 
   await fetchOrders(); 
 }
 
@@ -110,12 +122,20 @@ function switchTab(tabId){
 }
 
 // === FETCH PRODUCTS ===
-async function fetchProducts(collection, tab){
-  const res=await fetch(`/.netlify/functions/fetchProducts?collection=${collection}`);
+async function fetchProducts(tab){
+  let url="";
+  if(tab===1) url="/.netlify/functions/fetchProducts1";
+  if(tab===2) url="/.netlify/functions/fetchProducts2";
+  if(tab===3) url="/.netlify/functions/fetchProducts3";
+
+  console.log("📡 Pobieram produkty z:", url);
+
+  const res=await fetch(url);
   const data=await res.json();
-  if(collection==="products1"){ products1=data; renderProducts("product-list-1",products1,"products1"); }
-  if(collection==="products2"){ products2=data; renderProducts("product-list-2",products2,"products2"); }
-  if(collection==="products3"){ products3=data; renderProducts("product-list-3",products3,"products3"); }
+
+  if(tab===1){ products1=data; renderProductsTab1(); }
+  else if(tab===2){ products2=data; renderProductsTab2(); }
+  else if(tab===3){ products3=data; renderProductsTab3(); }
 }
 
 // === FETCH ORDERS ===
@@ -126,37 +146,57 @@ async function fetchOrders(){
 }
 
 // === ORDER PRODUCT ===
-async function orderProduct(productId,collection){
-  if(currentUser.role!=="User" && currentUser.role!=="Admin"){ alert("Brak dostępu do zamawiania"); return; }
+async function orderProduct(id,tab){
+  if(currentUser.role!=="user" && currentUser.role!=="admin"){ alert("Brak dostępu do zamawiania"); return; }
   const res=await fetch("/.netlify/functions/orderProduct",{
     method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({user:currentUser.username, productId, collection})
+    body:JSON.stringify({username:currentUser.username, productId:id, tab})
   });
-  const data=await res.json();
-  if(res.status!==200){ alert(data.error||"Błąd"); return; }
-  await fetchProducts(collection);
+  if(res.status!==200){ alert(await res.text()); return; }
+  await fetchProducts(tab); 
   await fetchOrders();
 }
 
 // === RESET ORDERS ===
 async function resetOrders(){
-  if(currentUser.role!=="Admin"){ alert("Brak uprawnień"); return; }
+  if(currentUser.role!=="admin"){ alert("Brak uprawnień"); return; }
   if(!confirm("Na pewno usunąć wszystkie zamówienia?")) return;
   await fetch("/.netlify/functions/resetOrders");
   fetchOrders();
   alert("✅ Zamówienia zresetowane!");
 }
 
-// === RENDER PRODUCTS (uniwersalne) ===
-function renderProducts(containerId,products,collection){
-  const container=document.getElementById(containerId); container.innerHTML="";
-  products.forEach(prod=>{
+// === RENDER PRODUCTS ===
+function renderProductsTab1(){
+  const container=document.getElementById("product-list-1"); container.innerHTML="";
+  products1.forEach(prod=>{
     const div=document.createElement("div"); div.className="card";
     div.innerHTML=`<h2>${prod.product_name}</h2>
-      <p><b>Cena:</b> ${Number(prod.price).toFixed(2)} zł</p>
+      <p><b>Cena:</b> ${Number(prod.price)} zł</p>
       <p><b>Dostępne:</b> ${Number(prod.stock)} szt.</p>
-      <button class="btn-order" onclick="orderProduct('${prod._id}','${collection}')" ${Number(prod.stock)===0?"disabled":""}>Zamów</button>`;
+      <button class="btn-order" onclick="orderProduct('${prod._id}',1)" ${Number(prod.stock)===0?"disabled":""}>Zamów</button>`;
+    container.appendChild(div);
+  });
+}
+function renderProductsTab2(){
+  const container=document.getElementById("product-list-2"); container.innerHTML="";
+  products2.forEach(prod=>{
+    const div=document.createElement("div"); div.className="card";
+    div.innerHTML=`<h2>${prod.product_name}</h2>
+      <p><b>Cena:</b> ${Number(prod.price)} zł</p>
+      <p><b>Dostępne:</b> ${Number(prod.stock)} szt.</p>
+      <button class="btn-order" onclick="orderProduct('${prod._id}',2)" ${Number(prod.stock)===0?"disabled":""}>Zamów</button>`;
+    container.appendChild(div);
+  });
+}
+function renderProductsTab3(){
+  const container=document.getElementById("product-list-3"); container.innerHTML="";
+  products3.forEach(prod=>{
+    const div=document.createElement("div"); div.className="card";
+    div.innerHTML=`<h2>${prod.product_name}</h2>
+      <p><b>Cena:</b> ${Number(prod.price)} zł</p>
+      <p><b>Dostępne:</b> ${Number(prod.stock)} szt.</p>
+      <button class="btn-order" onclick="orderProduct('${prod._id}',3)" ${Number(prod.stock)===0?"disabled":""}>Zamów</button>`;
     container.appendChild(div);
   });
 }
@@ -165,13 +205,19 @@ function renderProducts(containerId,products,collection){
 function renderOrders(){
   const list=document.getElementById("order-list"); list.innerHTML="";
   if(orders.length===0){ list.innerHTML="<li>Brak zamówień</li>"; return; }
+  const agg={};
   orders.forEach(o=>{
+    const key=`${o.user}|${o.product}`;
+    if(agg[key]) agg[key].count+=Number(o.quantity||1);
+    else agg[key]={user:o.user, product:o.product, count:Number(o.quantity||1), completed:o.completed, id:o._id};
+  });
+  Object.values(agg).forEach(o=>{
     const li=document.createElement("li");
-    if(currentUser.role==="Supplier" || currentUser.role==="Admin"){
-      li.innerHTML=`👤 ${o.user} zamówił(a) ${o.product} x${o.quantity} 
-        <input type="checkbox" ${o.completed?"checked":""} onchange="toggleCompleted('${o._id}',this.checked)"/> Zrealizowane`;
-    } else {
-      li.textContent=`👤 ${o.user} zamówił(a) ${o.product} x${o.quantity} ${o.completed?"✅":""}`;
+    if(currentUser.role==="supplier" || currentUser.role==="admin"){
+      li.innerHTML=`👤 ${o.user} zamówił(a) ${o.product} x${o.count} 
+        <input type="checkbox" ${o.completed?"checked":""} onchange="toggleCompleted('${o.id}',this.checked)"/> Zrealizowane`;
+    }else{
+      li.textContent=`👤 ${o.user} zamówił(a) ${o.product} x${o.count} ${o.completed?"✅":""}`;
     }
     list.appendChild(li);
   });
@@ -179,12 +225,8 @@ function renderOrders(){
 
 // === TOGGLE COMPLETED ===
 async function toggleCompleted(orderId,value){
-  if(currentUser.role!=="Supplier" && currentUser.role!=="Admin"){ alert("Brak uprawnień"); return; }
-  await fetch("/.netlify/functions/toggleCompleted",{
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({orderId,completed:value})
-  });
+  if(currentUser.role!=="supplier" && currentUser.role!=="admin"){ alert("Brak uprawnień"); return; }
+  await fetch("/.netlify/functions/toggleCompleted",{method:"POST", body:JSON.stringify({orderId,completed:value})});
   fetchOrders();
 }
 
