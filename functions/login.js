@@ -1,43 +1,69 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcrypt");
 
-const uri = process.env.MONGO_URI;  // Upewnij się, że masz ustawione w Netlify Environment Variables
+const uri = process.env.MONGO_URI; // <- pamiętaj, żeby mieć na końcu /cffc
 let conn = null;
 
 const connectDB = async () => {
-  if (!conn) conn = await mongoose.connect(uri, { useNewUrlParser: true, useUnifiedTopology: true });
+  if (!conn) {
+    conn = await mongoose.connect(uri, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true
+    });
+    console.log("✅ Połączono z MongoDB");
+  }
 };
 
-// Schemat użytkownika
-const User = mongoose.model("User", new mongoose.Schema({
-  username: String,
-  password: String,
-  role: String
-}));
+// Schemat użytkownika (wymuszenie kolekcji users)
+const userSchema = new mongoose.Schema(
+  {
+    username: String,
+    password: String,
+    role: String
+  },
+  { collection: "users" }
+);
+
+const User = mongoose.model("User", userSchema);
 
 exports.handler = async (event) => {
   try {
     await connectDB();
 
     const { username, password } = JSON.parse(event.body);
-    if (!username || !password) return { statusCode: 400, body: "Brak loginu lub hasła" };
+
+    if (!username || !password) {
+      return { statusCode: 400, body: "⚠️ Brak loginu lub hasła" };
+    }
+
+    console.log("🔍 Szukam użytkownika:", username);
 
     const user = await User.findOne({ username });
-    console.log("Znaleziony użytkownik:", user); // <- debug
+    console.log("📦 Znaleziony użytkownik:", user);
 
-    if (!user) return { statusCode: 401, body: "Niepoprawny login lub hasło" };
+    if (!user) {
+      return { statusCode: 401, body: "❌ Niepoprawny login lub hasło" };
+    }
 
-    // Sprawdzenie hasła
+    // porównanie hasła
     const match = await bcrypt.compare(password, user.password);
-    console.log("Czy hasło pasuje?", match); // <- debug
+    console.log("🔑 Czy hasło pasuje?", match);
 
-    if (!match) return { statusCode: 401, body: "Niepoprawny login lub hasło" };
+    if (!match) {
+      return { statusCode: 401, body: "❌ Niepoprawny login lub hasło" };
+    }
 
-    // Zwracamy username i role
-    return { statusCode: 200, body: JSON.stringify({ username: user.username, role: user.role }) };
+    // sukces
+    return {
+      statusCode: 200,
+      body: JSON.stringify({
+        username: user.username,
+        role: user.role
+      })
+    };
 
-  } catch (e) {
-    console.error("Błąd w login.js:", e);
+  } catch (err) {
+    console.error("💥 Błąd w login.js:", err);
     return { statusCode: 500, body: "Błąd serwera" };
   }
 };
