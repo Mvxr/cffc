@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <title>DeepWeb Sklep – Netlify + MongoDB</title>
 <style>
+/* === STYLING === */
 body { margin:0; font-family:'Courier New', monospace; background:black; color:#00cc66; overflow-x:hidden; }
 canvas#matrix { position:fixed; top:0; left:0; z-index:-1; width:100%; height:100%; }
 h1 { text-align:center; margin:20px 0; font-size:36px; text-shadow:0 0 10px #009933; }
@@ -32,42 +33,47 @@ h1 { text-align:center; margin:20px 0; font-size:36px; text-shadow:0 0 10px #009
 <canvas id="matrix"></canvas>
 
 <div id="login-box">
-<h1>💀 Logowanie 💀</h1>
-<input type="text" id="login-username" placeholder="Login..." />
-<input type="password" id="login-password" placeholder="Hasło..." />
-<br>
-<button class="btn" onclick="login()">Zaloguj</button>
+  <h1>💀 Logowanie 💀</h1>
+  <input type="text" id="login-username" placeholder="Login..." />
+  <input type="password" id="login-password" placeholder="Hasło..." />
+  <br>
+  <button class="btn" onclick="login()">Zaloguj</button>
 </div>
 
 <div id="main-container" class="container" style="display:none;">
-<h1>💀 DeepWeb Sklep – 2 Karty 💀</h1>
-<div class="top-bar">
-  <span id="welcome-text"></span>
-  <button class="btn" id="btn-reset-orders" onclick="resetOrders()" style="display:none;">🔄 Reset zamówień</button>
-  <button class="btn" onclick="toggleMatrix()">🟢 Matrix ON/OFF</button>
-</div>
+  <h1>💀 DeepWeb Sklep – 3 Karty 💀</h1>
+  <div class="top-bar">
+    <span id="welcome-text"></span>
+    <button class="btn" id="btn-reset-orders" onclick="resetOrders()" style="display:none;">🔄 Reset zamówień</button>
+    <button class="btn" onclick="toggleMatrix()">🟢 Matrix ON/OFF</button>
+  </div>
 
-<div class="tab-bar">
-  <button class="tab-btn" onclick="switchTab('tab1')">💀 Sklep 1</button>
-  <button class="tab-btn" onclick="switchTab('tab2')">⚡ Sklep 2</button>
-</div>
+  <div class="tab-bar">
+    <button class="tab-btn" onclick="switchTab('tab1')">💀 Sklep 1</button>
+    <button class="tab-btn" onclick="switchTab('tab2')">⚡ Sklep 2</button>
+    <button class="tab-btn" onclick="switchTab('tab3')">🔥 Sklep 3</button>
+  </div>
 
-<div id="tab1" class="tab-content">
-  <div class="product-list" id="product-list-1"></div>
-</div>
+  <div id="tab1" class="tab-content">
+    <div class="product-list" id="product-list-1"></div>
+  </div>
 
-<div id="tab2" class="tab-content" style="display:none;">
-  <div class="product-list" id="product-list-2"></div>
-</div>
+  <div id="tab2" class="tab-content" style="display:none;">
+    <div class="product-list" id="product-list-2"></div>
+  </div>
 
-<div class="orders">
-  <h2>📋 Zamówienia</h2>
-  <ul id="order-list"></ul>
-</div>
+  <div id="tab3" class="tab-content" style="display:none;">
+    <div class="product-list" id="product-list-3"></div>
+  </div>
+
+  <div class="orders">
+    <h2>📋 Zamówienia</h2>
+    <ul id="order-list"></ul>
+  </div>
 </div>
 
 <script>
-let currentUser=null, products1=[], products2=[], orders=[], matrixEnabled=true;
+let currentUser=null, products1=[], products2=[], products3=[], orders=[], matrixEnabled=true;
 
 // === LOGIN ===
 async function login(){
@@ -77,6 +83,7 @@ async function login(){
 
   const res=await fetch("/.netlify/functions/login",{
     method:"POST",
+    headers:{"Content-Type":"application/json"},
     body:JSON.stringify({username,password})
   });
   if(res.status!==200){ alert(await res.text()); return; }
@@ -84,12 +91,17 @@ async function login(){
   document.getElementById("login-box").style.display="none";
   document.getElementById("main-container").style.display="block";
   document.getElementById("welcome-text").textContent=`Witaj, ${currentUser.username} (${currentUser.role})`;
-  if(currentUser.role==="admin") document.getElementById("btn-reset-orders").style.display="inline-block";
+  if(currentUser.role==="Admin") document.getElementById("btn-reset-orders").style.display="inline-block";
   await initData();
 }
 
 // === INIT DATA ===
-async function initData(){ await fetchProducts(1); await fetchProducts(2); await fetchOrders(); }
+async function initData(){ 
+  await fetchProducts("products1","tab1"); 
+  await fetchProducts("products2","tab2"); 
+  await fetchProducts("products3","tab3"); 
+  await fetchOrders(); 
+}
 
 // === SWITCH TAB ===
 function switchTab(tabId){
@@ -98,11 +110,12 @@ function switchTab(tabId){
 }
 
 // === FETCH PRODUCTS ===
-async function fetchProducts(tab){
-  const res=await fetch(`/.netlify/functions/fetchProducts?tab=${tab}`);
+async function fetchProducts(collection, tab){
+  const res=await fetch(`/.netlify/functions/fetchProducts?collection=${collection}`);
   const data=await res.json();
-  if(tab===1){ products1=data; renderProductsTab1(); }
-  else{ products2=data; renderProductsTab2(); }
+  if(collection==="products1"){ products1=data; renderProducts("product-list-1",products1,"products1"); }
+  if(collection==="products2"){ products2=data; renderProducts("product-list-2",products2,"products2"); }
+  if(collection==="products3"){ products3=data; renderProducts("product-list-3",products3,"products3"); }
 }
 
 // === FETCH ORDERS ===
@@ -113,45 +126,37 @@ async function fetchOrders(){
 }
 
 // === ORDER PRODUCT ===
-async function orderProduct(id,tab){
-  if(currentUser.role!=="user" && currentUser.role!=="admin"){ alert("Brak dostępu do zamawiania"); return; }
+async function orderProduct(productId,collection){
+  if(currentUser.role!=="User" && currentUser.role!=="Admin"){ alert("Brak dostępu do zamawiania"); return; }
   const res=await fetch("/.netlify/functions/orderProduct",{
     method:"POST",
-    body:JSON.stringify({username:currentUser.username, productId:id, tab})
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({user:currentUser.username, productId, collection})
   });
-  if(res.status!==200){ alert(await res.text()); return; }
-  await fetchProducts(tab); await fetchOrders();
+  const data=await res.json();
+  if(res.status!==200){ alert(data.error||"Błąd"); return; }
+  await fetchProducts(collection);
+  await fetchOrders();
 }
 
 // === RESET ORDERS ===
 async function resetOrders(){
-  if(currentUser.role!=="admin"){ alert("Brak uprawnień"); return; }
+  if(currentUser.role!=="Admin"){ alert("Brak uprawnień"); return; }
   if(!confirm("Na pewno usunąć wszystkie zamówienia?")) return;
   await fetch("/.netlify/functions/resetOrders");
   fetchOrders();
   alert("✅ Zamówienia zresetowane!");
 }
 
-// === RENDER PRODUCTS ===
-function renderProductsTab1(){
-  const container=document.getElementById("product-list-1"); container.innerHTML="";
-  products1.forEach(prod=>{
+// === RENDER PRODUCTS (uniwersalne) ===
+function renderProducts(containerId,products,collection){
+  const container=document.getElementById(containerId); container.innerHTML="";
+  products.forEach(prod=>{
     const div=document.createElement("div"); div.className="card";
     div.innerHTML=`<h2>${prod.product_name}</h2>
       <p><b>Cena:</b> ${Number(prod.price).toFixed(2)} zł</p>
       <p><b>Dostępne:</b> ${Number(prod.stock)} szt.</p>
-      <button class="btn-order" onclick="orderProduct('${prod._id}',1)" ${Number(prod.stock)===0?"disabled":""}>Zamów</button>`;
-    container.appendChild(div);
-  });
-}
-function renderProductsTab2(){
-  const container=document.getElementById("product-list-2"); container.innerHTML="";
-  products2.forEach(prod=>{
-    const div=document.createElement("div"); div.className="card";
-    div.innerHTML=`<h2>${prod.product_name}</h2>
-      <p><b>Cena:</b> ${Number(prod.price).toFixed(2)} zł</p>
-      <p><b>Dostępne:</b> ${Number(prod.stock)} szt.</p>
-      <button class="btn-order" onclick="orderProduct('${prod._id}',2)" ${Number(prod.stock)===0?"disabled":""}>Zamów</button>`;
+      <button class="btn-order" onclick="orderProduct('${prod._id}','${collection}')" ${Number(prod.stock)===0?"disabled":""}>Zamów</button>`;
     container.appendChild(div);
   });
 }
@@ -160,19 +165,13 @@ function renderProductsTab2(){
 function renderOrders(){
   const list=document.getElementById("order-list"); list.innerHTML="";
   if(orders.length===0){ list.innerHTML="<li>Brak zamówień</li>"; return; }
-  const agg={};
   orders.forEach(o=>{
-    const key=`${o.user}|${o.product}`;
-    if(agg[key]) agg[key].count+=Number(o.quantity);
-    else agg[key]={user:o.user, product:o.product, count:Number(o.quantity), completed:o.completed, id:o._id};
-  });
-  Object.values(agg).forEach(o=>{
     const li=document.createElement("li");
-    if(currentUser.role==="supplier" || currentUser.role==="admin"){
-      li.innerHTML=`👤 ${o.user} zamówił(a) ${o.product} x${o.count} 
-        <input type="checkbox" ${o.completed?"checked":""} onchange="toggleCompleted('${o.id}',this.checked)"/> Zrealizowane`;
-    }else{
-      li.textContent=`👤 ${o.user} zamówił(a) ${o.product} x${o.count} ${o.completed?"✅":""}`;
+    if(currentUser.role==="Supplier" || currentUser.role==="Admin"){
+      li.innerHTML=`👤 ${o.user} zamówił(a) ${o.product} x${o.quantity} 
+        <input type="checkbox" ${o.completed?"checked":""} onchange="toggleCompleted('${o._id}',this.checked)"/> Zrealizowane`;
+    } else {
+      li.textContent=`👤 ${o.user} zamówił(a) ${o.product} x${o.quantity} ${o.completed?"✅":""}`;
     }
     list.appendChild(li);
   });
@@ -180,8 +179,12 @@ function renderOrders(){
 
 // === TOGGLE COMPLETED ===
 async function toggleCompleted(orderId,value){
-  if(currentUser.role!=="supplier" && currentUser.role!=="admin"){ alert("Brak uprawnień"); return; }
-  await fetch("/.netlify/functions/toggleCompleted",{method:"POST", body:JSON.stringify({orderId,completed:value})});
+  if(currentUser.role!=="Supplier" && currentUser.role!=="Admin"){ alert("Brak uprawnień"); return; }
+  await fetch("/.netlify/functions/toggleCompleted",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({orderId,completed:value})
+  });
   fetchOrders();
 }
 
