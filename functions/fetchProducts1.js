@@ -38,3 +38,8 @@ exports.handler = async () => {
     };
   }
 };
+
+
+console.log("📦 Kolekcja:", collection);
+console.log("✅ Produkty:", products);
+
