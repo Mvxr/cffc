@@ -4,7 +4,6 @@
   "description": "DeepWeb Sklep z Netlify Functions i MongoDB",
   "main": "index.js",
   "scripts": {
-    "start": "netlify dev",
     "build": "echo 'Netlify build'"
   },
   "author": "Twoje Imię",
@@ -12,8 +11,5 @@
   "dependencies": {
     "bcrypt": "^5.1.1",
     "mongoose": "^7.5.1"
-  },
-  "devDependencies": {
-    "netlify-cli": "^18.16.0"
   }
 }
