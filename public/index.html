@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>DeepWeb Sklep – Netlify + MongoDB</title>
+<style>
+body { margin:0; font-family:'Courier New', monospace; background:black; color:#00cc66; overflow-x:hidden; }
+canvas#matrix { position:fixed; top:0; left:0; z-index:-1; width:100%; height:100%; }
+h1 { text-align:center; margin:20px 0; font-size:36px; text-shadow:0 0 10px #009933; }
+.container { max-width:1000px; margin:auto; padding:20px; }
+.btn { margin-left:10px; background:#111; color:#00cc66; border:1px solid #00cc66; padding:8px 15px; border-radius:5px; cursor:pointer; transition:0.3s; }
+.btn:hover { background:#00cc66; color:black; }
+.product-list { display:grid; grid-template-columns:repeat(auto-fit, minmax(250px,1fr)); gap:20px; margin-bottom:20px; }
+.card { background:rgba(0,0,0,0.8); border:1px solid #00cc66; padding:20px; border-radius:10px; text-align:center; box-shadow:0 0 15px rgba(0,204,102,0.3); }
+.btn-order { margin-top:10px; background:#111; color:#00cc66; border:1px solid #00cc66; padding:10px 15px; border-radius:5px; cursor:pointer; transition:0.3s; }
+.btn-order:hover { background:#00cc66; color:black; }
+.btn-order:disabled { background:#222; color:#555; border-color:#333; cursor:not-allowed; }
+.orders { background:rgba(0,0,0,0.8); border:1px solid #00cc66; padding:20px; border-radius:10px; box-shadow:0 0 15px rgba(0,204,102,0.3); margin-top:20px; }
+.orders h2 { margin-bottom:15px; }
+.orders ul { list-style:none; padding:0; }
+.orders li { padding:8px 0; border-bottom:1px solid #003300; }
+.tab-bar { text-align:center; margin-bottom:20px; }
+.tab-btn { background:#111; color:#00cc66; border:1px solid #00cc66; padding:8px 15px; margin:0 5px; border-radius:5px; cursor:pointer; }
+.tab-btn:hover { background:#00cc66; color:black; }
+.tab-content { display:block; }
+#login-box { max-width:400px; margin:100px auto; text-align:center; }
+#login-box input { width:80%; margin:5px 0; padding:8px; border-radius:5px; border:1px solid #00cc66; background:black; color:#00cc66; }
+#login-box button { margin-top:10px; }
+</style>
+</head>
+<body>
+<canvas id="matrix"></canvas>
+
+<div id="login-box">
+<h1>💀 Logowanie 💀</h1>
+<input type="text" id="login-username" placeholder="Login..." />
+<input type="password" id="login-password" placeholder="Hasło..." />
+<br>
+<button class="btn" onclick="login()">Zaloguj</button>
+</div>
+
+<div id="main-container" class="container" style="display:none;">
+<h1>💀 DeepWeb Sklep – 2 Karty 💀</h1>
+<div class="top-bar">
+  <span id="welcome-text"></span>
+  <button class="btn" id="btn-reset-orders" onclick="resetOrders()" style="display:none;">🔄 Reset zamówień</button>
+  <button class="btn" onclick="toggleMatrix()">🟢 Matrix ON/OFF</button>
+</div>
+
+<div class="tab-bar">
+  <button class="tab-btn" onclick="switchTab('tab1')">💀 Sklep 1</button>
+  <button class="tab-btn" onclick="switchTab('tab2')">⚡ Sklep 2</button>
+</div>
+
+<div id="tab1" class="tab-content">
+  <div class="product-list" id="product-list-1"></div>
+</div>
+
+<div id="tab2" class="tab-content" style="display:none;">
+  <div class="product-list" id="product-list-2"></div>
+</div>
+
+<div class="orders">
+  <h2>📋 Zamówienia</h2>
+  <ul id="order-list"></ul>
+</div>
+</div>
+
+<script>
+let currentUser=null, products1=[], products2=[], orders=[], matrixEnabled=true;
+
+// === LOGIN ===
+async function login(){
+  const username=document.getElementById("login-username").value.trim();
+  const password=document.getElementById("login-password").value.trim();
+  if(!username || !password){ alert("Podaj login i hasło!"); return; }
+
+  const res=await fetch("/.netlify/functions/login",{
+    method:"POST",
+    body:JSON.stringify({username,password})
+  });
+  if(res.status!==200){ alert(await res.text()); return; }
+  currentUser=await res.json();
+  document.getElementById("login-box").style.display="none";
+  document.getElementById("main-container").style.display="block";
+  document.getElementById("welcome-text").textContent=`Witaj, ${currentUser.username} (${currentUser.role})`;
+  if(currentUser.role==="admin") document.getElementById("btn-reset-orders").style.display="inline-block";
+  await initData();
+}
+
+// === INIT DATA ===
+async function initData(){ await fetchProducts(1); await fetchProducts(2); await fetchOrders(); }
+
+// === SWITCH TAB ===
+function switchTab(tabId){
+  document.querySelectorAll(".tab-content").forEach(t=>t.style.display="none");
+  document.getElementById(tabId).style.display="block";
+}
+
+// === FETCH PRODUCTS ===
+async function fetchProducts(tab){
+  const res=await fetch(`/.netlify/functions/fetchProducts?tab=${tab}`);
+  const data=await res.json();
+  if(tab===1){ products1=data; renderProductsTab1(); }
+  else{ products2=data; renderProductsTab2(); }
+}
+
+// === FETCH ORDERS ===
+async function fetchOrders(){
+  const res=await fetch("/.netlify/functions/fetchOrders");
+  orders=await res.json();
+  renderOrders();
+}
+
+// === ORDER PRODUCT ===
+async function orderProduct(id,tab){
+  if(currentUser.role!=="user" && currentUser.role!=="admin"){ alert("Brak dostępu do zamawiania"); return; }
+  const res=await fetch("/.netlify/functions/orderProduct",{
+    method:"POST",
+    body:JSON.stringify({username:currentUser.username, productId:id, tab})
+  });
+  if(res.status!==200){ alert(await res.text()); return; }
+  await fetchProducts(tab); await fetchOrders();
+}
+
+// === RESET ORDERS ===
+async function resetOrders(){
+  if(currentUser.role!=="admin"){ alert("Brak uprawnień"); return; }
+  if(!confirm("Na pewno usunąć wszystkie zamówienia?")) return;
+  await fetch("/.netlify/functions/resetOrders");
+  fetchOrders();
+  alert("✅ Zamówienia zresetowane!");
+}
+
+// === RENDER PRODUCTS ===
+function renderProductsTab1(){
+  const container=document.getElementById("product-list-1"); container.innerHTML="";
+  products1.forEach(prod=>{
+    const div=document.createElement("div"); div.className="card";
+    div.innerHTML=`<h2>${prod.product_name}</h2>
+      <p><b>Cena:</b> ${Number(prod.price).toFixed(2)} zł</p>
+      <p><b>Dostępne:</b> ${Number(prod.stock)} szt.</p>
+      <button class="btn-order" onclick="orderProduct('${prod._id}',1)" ${Number(prod.stock)===0?"disabled":""}>Zamów</button>`;
+    container.appendChild(div);
+  });
+}
+function renderProductsTab2(){
+  const container=document.getElementById("product-list-2"); container.innerHTML="";
+  products2.forEach(prod=>{
+    const div=document.createElement("div"); div.className="card";
+    div.innerHTML=`<h2>${prod.product_name}</h2>
+      <p><b>Cena:</b> ${Number(prod.price).toFixed(2)} zł</p>
+      <p><b>Dostępne:</b> ${Number(prod.stock)} szt.</p>
+      <button class="btn-order" onclick="orderProduct('${prod._id}',2)" ${Number(prod.stock)===0?"disabled":""}>Zamów</button>`;
+    container.appendChild(div);
+  });
+}
+
+// === RENDER ORDERS ===
+function renderOrders(){
+  const list=document.getElementById("order-list"); list.innerHTML="";
+  if(orders.length===0){ list.innerHTML="<li>Brak zamówień</li>"; return; }
+  const agg={};
+  orders.forEach(o=>{
+    const key=`${o.user}|${o.product}`;
+    if(agg[key]) agg[key].count+=Number(o.quantity);
+    else agg[key]={user:o.user, product:o.product, count:Number(o.quantity), completed:o.completed, id:o._id};
+  });
+  Object.values(agg).forEach(o=>{
+    const li=document.createElement("li");
+    if(currentUser.role==="supplier" || currentUser.role==="admin"){
+      li.innerHTML=`👤 ${o.user} zamówił(a) ${o.product} x${o.count} 
+        <input type="checkbox" ${o.completed?"checked":""} onchange="toggleCompleted('${o.id}',this.checked)"/> Zrealizowane`;
+    }else{
+      li.textContent=`👤 ${o.user} zamówił(a) ${o.product} x${o.count} ${o.completed?"✅":""}`;
+    }
+    list.appendChild(li);
+  });
+}
+
+// === TOGGLE COMPLETED ===
+async function toggleCompleted(orderId,value){
+  if(currentUser.role!=="supplier" && currentUser.role!=="admin"){ alert("Brak uprawnień"); return; }
+  await fetch("/.netlify/functions/toggleCompleted",{method:"POST", body:JSON.stringify({orderId,completed:value})});
+  fetchOrders();
+}
+
+// === MATRIX ===
+const canvas=document.getElementById("matrix"); const ctx=canvas.getContext("2d");
+canvas.height=window.innerHeight; canvas.width=window.innerWidth;
+const letters="01"; const fontSize=16; const columns=Math.floor(canvas.width/fontSize); const drops=[]; for(let i=0;i<columns;i++) drops[i]=1;
+function drawMatrix(){ if(!matrixEnabled) return; ctx.fillStyle="rgba(0,0,0,0.1)"; ctx.fillRect(0,0,canvas.width,canvas.height); ctx.fillStyle="#00aa44"; ctx.font=fontSize+"px monospace"; for(let i=0;i<drops.length;i++){ const text=letters.charAt(Math.floor(Math.random()*letters.length)); ctx.fillText(text,i*fontSize,drops[i]*fontSize); if(drops[i]*fontSize>canvas.height && Math.random()>0.985) drops[i]=0; drops[i]+=0.5; } }
+setInterval(drawMatrix,70); function toggleMatrix(){ matrixEnabled=!matrixEnabled; if(!matrixEnabled) ctx.clearRect(0,0,canvas.width,canvas.height); }
+</script>
+</body>
+</html>
