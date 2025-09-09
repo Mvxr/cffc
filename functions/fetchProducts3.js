@@ -1,40 +1,25 @@
-const mongoose = require("mongoose");
-
-let conn = null;
-
-const productSchema = new mongoose.Schema(
-  {
-    product_name: String,
-    price: Number,
-    stock: Number,
-  },
-  { collection: "products3" } // 👈 tu products3
-);
-
-let Product;
+const { MongoClient } = require("mongodb");
+const client = new MongoClient(process.env.MONGO_URI);
 
 exports.handler = async () => {
   try {
-    if (!conn) {
-      conn = await mongoose.connect(process.env.MONGO_URI, {
-        useNewUrlParser: true,
-        useUnifiedTopology: true,
-        dbName: "VibeWebShop", // 👈 ważne
-      });
-      Product = mongoose.model("Product1", productSchema);
-      console.log("✅ Połączono z MongoDB (products1)");
+    if (!client.topology?.isConnected()) {
+      await client.connect();
     }
+    const db = client.db("VibeWebShop");
+    const products = await db.collection("products3").find({}).toArray();
 
-    const products = await Product.find();
+    console.log("📦 [products3] Znalezione produkty:", products);
+
     return {
       statusCode: 200,
       body: JSON.stringify(products),
     };
   } catch (err) {
-    console.error("❌ Błąd pobierania products1:", err);
+    console.error("❌ Błąd fetchProducts3:", err);
     return {
       statusCode: 500,
-      body: JSON.stringify({ message: "Błąd serwera" }),
+      body: JSON.stringify({ error: err.message }),
     };
   }
 };
